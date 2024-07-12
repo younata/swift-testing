@@ -57,6 +57,14 @@ public struct Issue: Sendable {
     /// }
     indirect case timeLimitExceeded(timeLimitComponents: (seconds: Int64, attoseconds: Int64))
 
+    /// A third-party tool recorded an issue.
+    ///
+    /// - Parameters:
+    ///   - failureReason: A brief human-readable description of the issue.
+    ///
+    /// - Note: Name to be bikeshedded.
+    case recordedByTool(_ failureReason: String)
+
     /// A known issue was expected, but was not recorded.
     case knownIssueNotRecorded
 
@@ -65,7 +73,6 @@ public struct Issue: Sendable {
 
     /// An issue due to a failure in the underlying system, not due to a failure
     /// within the tests being run.
-    @_spi(ForToolsIntegrationOnly)
     case system
   }
 
@@ -167,6 +174,8 @@ extension Issue.Kind: CustomStringConvertible {
       "Caught error: \(error)"
     case let .timeLimitExceeded(timeLimitComponents: timeLimitComponents):
       "Time limit was exceeded: \(TimeValue(timeLimitComponents))"
+    case let .recordedByTool(failureReason):
+      failureReason
     case .knownIssueNotRecorded:
       "Known issue was not recorded"
     case .apiMisused:
@@ -281,6 +290,14 @@ extension Issue.Kind {
     /// }
     indirect case timeLimitExceeded(timeLimitComponents: (seconds: Int64, attoseconds: Int64))
 
+    /// A third-party tool recorded an issue.
+    ///
+    /// - Parameters:
+    ///   - failureReason: A brief human-readable description of the issue.
+    ///
+    /// - Note: Name to be bikeshedded.
+    case recordedByTool(_ failureReason: String)
+
     /// A known issue was expected, but was not recorded.
     case knownIssueNotRecorded
 
@@ -305,6 +322,8 @@ extension Issue.Kind {
           .errorCaught(ErrorSnapshot(snapshotting: error))
       case let .timeLimitExceeded(timeLimitComponents: timeLimitComponents):
           .timeLimitExceeded(timeLimitComponents: timeLimitComponents)
+      case let .recordedByTool(failureReason):
+          .recordedByTool(failureReason)
       case .knownIssueNotRecorded:
           .knownIssueNotRecorded
       case .apiMisused:
@@ -322,6 +341,7 @@ extension Issue.Kind {
       case errorCaught
       case timeLimitExceeded
       case knownIssueNotRecorded
+      case recordedByTool
       case apiMisused
       case system
 
@@ -362,6 +382,8 @@ extension Issue.Kind {
         self = .timeLimitExceeded(timeLimitComponents: timeLimit.components)
       } else if try container.decodeIfPresent(Bool.self, forKey: .knownIssueNotRecorded) != nil {
         self = .knownIssueNotRecorded
+      } else if let failureReason = try container.decodeIfPresent(String.self, forKey: .recordedByTool) {
+        self = .recordedByTool(failureReason)
       } else if try container.decodeIfPresent(Bool.self, forKey: .apiMisused) != nil {
         self = .apiMisused
       } else if try container.decodeIfPresent(Bool.self, forKey: .system) != nil {
@@ -400,6 +422,8 @@ extension Issue.Kind {
         try container.encode(true, forKey: .knownIssueNotRecorded)
       case .apiMisused:
         try container.encode(true, forKey: .apiMisused)
+      case let .recordedByTool(failureReason):
+        try container.encode(failureReason, forKey: .recordedByTool)
       case .system:
         try container.encode(true, forKey: .system)
       }
@@ -452,6 +476,8 @@ extension Issue.Kind.Snapshot: CustomStringConvertible {
       "Known issue was not recorded"
     case .apiMisused:
       "An API was misused"
+    case let .recordedByTool(failureReason):
+      failureReason
     case .system:
       "A system failure occurred"
     }

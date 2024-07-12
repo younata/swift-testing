@@ -54,10 +54,11 @@ extension Issue {
     return issue.record(configuration: configuration)
   }
 
-  /// Record this issue by wrapping it in an ``Event`` and passing it to the
-  /// current event handler.
+  /// Record this issue.
   ///
   /// - Returns: The issue that was recorded (`self` or a modified copy of it.)
+  /// For example, if the issue matches the known issue matcher, then the
+  /// `isKnown` property will be set to `true`.
   @discardableResult
   public func record() -> Self {
     record(configuration: nil)

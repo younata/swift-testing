@@ -61,7 +61,7 @@ public struct Issue: Sendable {
     kind: Kind,
     comments: [Comment] = [],
     sourceContext: SourceContext = .init()
-  ) {}
+  )
 
   // ...
 }
@@ -78,7 +78,7 @@ extension Issue {
   ///
   /// - Returns: The issue that was recorded (`self` or a modified copy of it.)
   @discardableResult
-  public func record() -> Self {}
+  public func record() -> Self
 }
 ```
 
@@ -87,7 +87,7 @@ This change requires us to eliminate the default value of `nil` for the
 
 ```swift
 extension Issue {
-  func record(configuration: Configuration?)  -> Self {}
+  func record(configuration: Configuration?)  -> Self
 }
 ```
 
@@ -105,7 +105,7 @@ initializer that does take in an `Expression`:
     isPassing: Bool,
     isRequired: Bool,
     sourceLocation: SourceLocation
-  ) {}
+  )
 
   init(
     evaluatedExpression: Expression,
@@ -173,6 +173,6 @@ accessing the current test more reliable and robust is a separate concern.
 
 ## Acknowledgments
 
-I'd like to thank [Jonathon Grynspan](https://github.com/grynspan) and
+I'd like to thank [Jonathan Grynspan](https://github.com/grynspan) and
 [Stuart Montgomery](https://github.com/stmontgomery) for fielding my Issue
 report and encouraging me to contribute more to this community.

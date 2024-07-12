@@ -22,7 +22,7 @@ extension ABIv0 {
     /// The location in source where this issue occurred, if available.
     var sourceLocation: SourceLocation?
 
-    init(encoding issue: borrowing Issue) {
+    init(encoding issue: Issue) {
       isKnown = issue.isKnown
       sourceLocation = issue.sourceLocation
     }
