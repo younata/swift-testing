@@ -12,46 +12,29 @@
 
 @Suite("Polling Tests")
 struct PollingTests {
-  @Suite("PollingBehavior.passesOnce")
+  @Suite("confirmPassesEventually")
   struct PassesOnceBehavior {
     let delta = Duration.seconds(6)
 
-    @Test("Simple passing expressions") func trivialHappyPath() async {
-      await #expect(until: .passesOnce) { true }
+    @Test("Simple passing expressions") func trivialHappyPath() async throws {
+      await confirmPassesEventually { true }
 
-      await #expect(until: .passesOnce, throws: PollingTestSampleError.ohNo) {
-        throw PollingTestSampleError.ohNo
-      }
-
-      await #expect(until: .passesOnce, performing: {
-        throw PollingTestSampleError.secondCase
-      }, throws: { error in
-        (error as? PollingTestSampleError) == .secondCase
-      })
-
-      await #expect(until: .passesOnce, throws: PollingTestSampleError.ohNo) {
-        throw PollingTestSampleError.ohNo
-      }
+      let value = try await confirmPassesEventually { 1 }
+      #expect(value == 1)
     }
 
-    @Test("Simple failing expressions") func trivialSadPath() async {
-      await confirmation("Polling failed", expectedCount: 1) { failed in
-        var configuration = Configuration()
-        configuration.eventHandler = { event, _ in
-          if case .issueRecorded = event.kind {
-            failed()
-          }
-        }
-        await Test {
-          await #expect(until: .passesOnce) { false }
-        }.run(configuration: configuration)
+    @Test("Simple failing expressions") func trivialSadPath() async throws {
+      let issues = await runTest {
+        await confirmPassesEventually { false }
+        _ = try await confirmPassesEventually { Optional<Int>.none }
       }
+      #expect(issues.count == 3)
     }
 
     @Test("When the value changes from false to true during execution") func changingFromFail() async {
       let incrementor = Incrementor()
 
-      await #expect(until: .passesOnce) {
+      await confirmPassesEventually {
         await incrementor.increment() == 2
         // this will pass only on the second invocation
         // This checks that we really are only running the expression until
@@ -62,75 +45,62 @@ struct PollingTests {
       #expect(await incrementor.count == 2)
     }
 
-    @Test("Unexpected Errors are treated as returning false")
+    @Test("Thrown errors are treated as returning false")
     func errorsReported() async {
-      await confirmation("Polling failed", expectedCount: 1) { failed in
-        var configuration = Configuration()
-        configuration.eventHandler = { event, _ in
-          if case .issueRecorded = event.kind {
-            failed()
-          }
+      let issues = await runTest {
+        await confirmPassesEventually {
+          throw PollingTestSampleError.ohNo
         }
-        await Test {
-          await #expect(until: .passesOnce) {
-            throw PollingTestSampleError.ohNo
-          }
-        }.run(configuration: configuration)
       }
+      #expect(issues.count == 1)
     }
   }
 
-  @Suite("PollingBehavior.passesAlways")
+  @Suite("confirmAlwaysPasses")
   struct PassesAlwaysBehavior {
     // use a very generous delta for CI reasons.
     let delta = Duration.seconds(6)
 
     @Test("Simple passing expressions") func trivialHappyPath() async {
-      await #expect(until: .passesAlways) { true }
+      await confirmAlwaysPasses { true }
+    }
+
+    @Test("Returning value returns the last value from the expression")
+    func returnsLastValueReturned() async throws {
+      let incrementor = Incrementor()
+      let value = try await confirmAlwaysPasses {
+        await incrementor.increment()
+      }
+      #expect(value > 1)
     }
 
     @Test("Simple failing expressions") func trivialSadPath() async {
-      await confirmation("Polling failed", expectedCount: 1) { failed in
-        var configuration = Configuration()
-        configuration.eventHandler = { event, _ in
-          if case .issueRecorded = event.kind {
-            failed()
-          }
-        }
-        await Test {
-          await #expect(until: .passesAlways) { false }
-        }.run(configuration: configuration)
+      let issues = await runTest {
+        await confirmAlwaysPasses { false }
+        _ = try await confirmAlwaysPasses { Optional<Int>.none }
       }
+      #expect(issues.count == 3)
     }
 
-    @Test("if the closures starts off as false, but would become true")
+    @Test("if the closures starts off as true, but becomes false")
     func changingFromFail() async {
       let incrementor = Incrementor()
-
-      await confirmation("Polling failed", expectedCount: 1) { failed in
-        var configuration = Configuration()
-        configuration.eventHandler = { event, _ in
-          if case .issueRecorded = event.kind {
-            failed()
-          }
+      let issues = await runTest {
+        await confirmAlwaysPasses {
+          await incrementor.increment() == 2
+          // this will pass only on the first invocation
+          // This checks that we fail the test if it starts failing later during
+          // polling
         }
-        await Test {
-          await #expect(until: .passesAlways) {
-            await incrementor.increment() == 2
-            // this will pass only on the second invocation
-            // This checks that we fail the test if it immediately returns false
-          }
-        }.run(configuration: configuration)
       }
-
-      #expect(await incrementor.count == 1)
+      #expect(issues.count == 1)
     }
 
     @Test("if the closure continues to pass")
     func continuousCalling() async {
       let incrementor = Incrementor()
 
-      await #expect(until: .passesAlways) {
+      await confirmAlwaysPasses {
         _ = await incrementor.increment()
         return true
       }
@@ -138,62 +108,34 @@ struct PollingTests {
       #expect(await incrementor.count > 1)
     }
 
-    @Test("Unexpected Errors will automatically exit & fail") func errorsReported() async {
-      await confirmation("Polling failed", expectedCount: 1) { failed in
-        var configuration = Configuration()
-        configuration.eventHandler = { event, _ in
-          if case .issueRecorded = event.kind {
-            failed()
-          }
+    @Test("Thrown errors will automatically exit & fail") func errorsReported() async {
+      let issues = await runTest {
+        await confirmAlwaysPasses {
+          throw PollingTestSampleError.ohNo
         }
-        await Test {
-          await #expect(until: .passesAlways) {
-            throw PollingTestSampleError.ohNo
-          }
-        }.run(configuration: configuration)
       }
+      #expect(issues.count == 1)
     }
   }
 
   @Suite("Duration Tests", .disabled("time-sensitive")) struct DurationTests {
-    @Suite("PollingBehavior.passesOnce")
+    @Suite("confirmPassesEventually")
     struct PassesOnceBehavior {
       let delta = Duration.seconds(6)
 
       @Test("Simple passing expressions") func trivialHappyPath() async {
         let duration = await Test.Clock().measure {
-          await #expect(until: .passesOnce) { true }
-
-          await #expect(until: .passesOnce, throws: PollingTestSampleError.ohNo) {
-            throw PollingTestSampleError.ohNo
-          }
-
-          await #expect(until: .passesOnce, performing: {
-            throw PollingTestSampleError.secondCase
-          }, throws: { error in
-            (error as? PollingTestSampleError) == .secondCase
-          })
-
-          await #expect(until: .passesOnce, throws: PollingTestSampleError.ohNo) {
-            throw PollingTestSampleError.ohNo
-          }
+          await confirmPassesEventually { true }
         }
         #expect(duration.isCloseTo(other: .zero, within: delta))
       }
 
       @Test("Simple failing expressions") func trivialSadPath() async {
         let duration = await Test.Clock().measure {
-          await confirmation("Polling failed", expectedCount: 1) { failed in
-            var configuration = Configuration()
-            configuration.eventHandler = { event, _ in
-              if case .issueRecorded = event.kind {
-                failed()
-              }
-            }
-            await Test {
-              await #expect(until: .passesOnce) { false }
-            }.run(configuration: configuration)
+          let issues = await runTest {
+            await confirmPassesEventually { false }
           }
+          #expect(issues.count == 1)
         }
         #expect(duration.isCloseTo(other: .seconds(60), within: delta))
       }
@@ -202,7 +144,7 @@ struct PollingTests {
         let incrementor = Incrementor()
 
         let duration = await Test.Clock().measure {
-          await #expect(until: .passesOnce) {
+          await confirmPassesEventually {
             await incrementor.increment() == 2
             // this will pass only on the second invocation
             // This checks that we really are only running the expression until
@@ -214,113 +156,26 @@ struct PollingTests {
         #expect(await incrementor.count == 2)
         #expect(duration.isCloseTo(other: .zero, within: delta))
       }
-
-      @Test("Unexpected Errors are treated as returning false")
-      func errorsReported() async {
-        let duration = await Test.Clock().measure {
-          await confirmation("Polling failed", expectedCount: 1) { failed in
-            var configuration = Configuration()
-            configuration.eventHandler = { event, _ in
-              if case .issueRecorded = event.kind {
-                failed()
-              }
-            }
-            await Test {
-              await #expect(until: .passesOnce) {
-                throw PollingTestSampleError.ohNo
-              }
-            }.run(configuration: configuration)
-          }
-        }
-        #expect(duration.isCloseTo(other: .seconds(60), within: delta))
-      }
     }
 
-    @Suite("PollingBehavior.passesAlways")
+    @Suite("confirmAlwaysPasses")
     struct PassesAlwaysBehavior {
       // use a very generous delta for CI reasons.
       let delta = Duration.seconds(6)
 
       @Test("Simple passing expressions") func trivialHappyPath() async {
         let duration = await Test.Clock().measure {
-          await #expect(until: .passesAlways) { true }
+          await confirmAlwaysPasses { true }
         }
         #expect(duration.isCloseTo(other: .seconds(60), within: delta))
       }
 
       @Test("Simple failing expressions") func trivialSadPath() async {
         let duration = await Test.Clock().measure {
-          await confirmation("Polling failed", expectedCount: 1) { failed in
-            var configuration = Configuration()
-            configuration.eventHandler = { event, _ in
-              if case .issueRecorded = event.kind {
-                failed()
-              }
-            }
-            await Test {
-              await #expect(until: .passesAlways) { false }
-            }.run(configuration: configuration)
+          let issues = await runTest {
+            await confirmAlwaysPasses { false }
           }
-        }
-        #expect(duration.isCloseTo(other: .zero, within: delta))
-      }
-
-      @Test("if the closures starts off as false, but would become true")
-      func changingFromFail() async {
-        let incrementor = Incrementor()
-
-        let duration = await Test.Clock().measure {
-          await confirmation("Polling failed", expectedCount: 1) { failed in
-            var configuration = Configuration()
-            configuration.eventHandler = { event, _ in
-              if case .issueRecorded = event.kind {
-                failed()
-              }
-            }
-            await Test {
-              await #expect(until: .passesAlways) {
-                await incrementor.increment() == 2
-              }
-              // this will pass only on the second invocation
-              // This checks that we fail the test if it immediately returns false
-            }.run(configuration: configuration)
-          }
-        }
-
-        #expect(await incrementor.count == 1)
-        #expect(duration.isCloseTo(other: .zero, within: delta))
-      }
-
-      @Test("if the closure continues to pass")
-      func continuousCalling() async {
-        let incrementor = Incrementor()
-
-        let duration = await Test.Clock().measure {
-          await #expect(until: .passesAlways) {
-            _ = await incrementor.increment()
-            return true
-          }
-        }
-
-        #expect(await incrementor.count > 1)
-        #expect(duration.isCloseTo(other: .seconds(60), within: delta))
-      }
-
-      @Test("Unexpected Errors will automatically exit & fail") func errorsReported() async {
-        let duration = await Test.Clock().measure {
-          await confirmation("Polling failed", expectedCount: 1) { failed in
-            var configuration = Configuration()
-            configuration.eventHandler = { event, _ in
-              if case .issueRecorded = event.kind {
-                failed()
-              }
-            }
-            await Test {
-              await #expect(until: .passesOnce) {
-                throw PollingTestSampleError.ohNo
-              }
-            }.run(configuration: configuration)
-          }
+          #expect(issues.count == 1)
         }
         #expect(duration.isCloseTo(other: .zero, within: delta))
       }
