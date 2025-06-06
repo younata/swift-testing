@@ -26,12 +26,16 @@
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
 public func confirmPassesEventually(
   _ comment: Comment? = nil,
+  maxPollingIterations: Int = 1000,
+  pollingInterval: Duration = .milliseconds(1),
   isolation: isolated (any Actor)? = #isolation,
   sourceLocation: SourceLocation = #_sourceLocation,
   _ body: @escaping () async throws -> Bool
 ) async {
   let poller = Poller(
     pollingBehavior: .passesOnce,
+    pollingIterations: maxPollingIterations,
+    pollingInterval: pollingInterval,
     comment: comment,
     sourceLocation: sourceLocation
   )
@@ -70,8 +74,11 @@ public struct PollingFailedError: Error {}
 /// through other forms of `confirmation`.
 @_spi(Experimental)
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
+@discardableResult
 public func confirmPassesEventually<R>(
   _ comment: Comment? = nil,
+  maxPollingIterations: Int = 1000,
+  pollingInterval: Duration = .milliseconds(1),
   isolation: isolated (any Actor)? = #isolation,
   sourceLocation: SourceLocation = #_sourceLocation,
   _ body: @escaping () async throws -> R?
@@ -79,6 +86,8 @@ public func confirmPassesEventually<R>(
   let recorder = PollingRecorder<R>()
   let poller = Poller(
     pollingBehavior: .passesOnce,
+    pollingIterations: maxPollingIterations,
+    pollingInterval: pollingInterval,
     comment: comment,
     sourceLocation: sourceLocation
   )
@@ -113,12 +122,16 @@ public func confirmPassesEventually<R>(
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
 public func confirmAlwaysPasses(
   _ comment: Comment? = nil,
+  maxPollingIterations: Int = 1000,
+  pollingInterval: Duration = .milliseconds(1),
   isolation: isolated (any Actor)? = #isolation,
   sourceLocation: SourceLocation = #_sourceLocation,
   _ body: @escaping () async throws -> Bool
 ) async {
   let poller = Poller(
     pollingBehavior: .passesAlways,
+    pollingIterations: maxPollingIterations,
+    pollingInterval: pollingInterval,
     comment: comment,
     sourceLocation: sourceLocation
   )
@@ -153,28 +166,26 @@ public func confirmAlwaysPasses(
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
 public func confirmAlwaysPasses<R>(
   _ comment: Comment? = nil,
+  maxPollingIterations: Int = 1000,
+  pollingInterval: Duration = .milliseconds(1),
   isolation: isolated (any Actor)? = #isolation,
   sourceLocation: SourceLocation = #_sourceLocation,
   _ body: @escaping () async throws -> R?
-) async throws -> R where R: Sendable {
-  let recorder = PollingRecorder<R>()
+) async {
   let poller = Poller(
     pollingBehavior: .passesAlways,
+    pollingIterations: maxPollingIterations,
+    pollingInterval: pollingInterval,
     comment: comment,
     sourceLocation: sourceLocation
   )
   await poller.evaluate(isolation: isolation) {
     do {
-      return try await recorder.record(value: body())
+      return try await body() != nil
     } catch {
       return false
     }
   }
-
-  if let value = await recorder.lastValue {
-    return value
-  }
-  throw PollingFailedError()
 }
 
 /// A type to record the last value returned by a closure returning an optional
@@ -289,6 +300,11 @@ private struct Poller {
   /// while the expression continues to pass)
   let pollingBehavior: PollingBehavior
 
+  // How many times to poll
+  let pollingIterations: Int
+  // Minimum waiting period between polling
+  let pollingInterval: Duration
+
   /// A comment from the test author associated with the polling
   let comment: Comment?
 
@@ -306,7 +322,6 @@ private struct Poller {
     _ body: @escaping () async -> Bool
   ) async {
     let result = await poll(
-      runAmount: 1_000_000,
       expression: body
     )
     result.issue(
@@ -325,20 +340,22 @@ private struct Poller {
   ///   - timeout: How long to poll for unitl the timeout triggers.
   /// - Returns: The result of this polling.
   private func poll(
-    runAmount: Int,
     isolation: isolated (any Actor)? = #isolation,
     expression: @escaping () async -> Bool
   ) async -> PollResult {
-    for _ in 0..<runAmount {
-      if Task.isCancelled {
-        return .cancelled
-      }
+    for _ in 0..<pollingIterations {
       if let result = await pollingBehavior.processFinishedExpression(
         expressionResult: expression()
       ) {
         return result
       }
-      await Task.yield()
+      do {
+        try await Task.sleep(for: pollingInterval)
+      } catch {
+        // `Task.sleep` should only throw an error if it's cancelled
+        // during the sleep period.
+        return .cancelled
+      }
     }
     return .ranToCompletion
   }

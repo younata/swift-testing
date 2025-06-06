@@ -65,21 +65,12 @@ struct PollingTests {
       await confirmAlwaysPasses { true }
     }
 
-    @Test("Returning value returns the last value from the expression")
-    func returnsLastValueReturned() async throws {
-      let incrementor = Incrementor()
-      let value = try await confirmAlwaysPasses {
-        await incrementor.increment()
-      }
-      #expect(value > 1)
-    }
-
     @Test("Simple failing expressions") func trivialSadPath() async {
       let issues = await runTest {
         await confirmAlwaysPasses { false }
-        _ = try await confirmAlwaysPasses { Optional<Int>.none }
+        await confirmAlwaysPasses { Optional<Int>.none }
       }
-      #expect(issues.count == 3)
+      #expect(issues.count == 2)
     }
 
     @Test("if the closures starts off as true, but becomes false")
