@@ -8,36 +8,38 @@
 /// A trait to provide a default polling configuration to all usages of
 /// ``confirmPassesEventually`` within a test or suite.
 ///
-/// To add this trait to a test, use the ``Trait/pollingConfirmationEventually``
+/// To add this trait to a test, use the
+/// ``Trait/confirmPassesEventuallyDefaults`` function.
 @_spi(Experimental)
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
 public struct ConfirmPassesEventuallyConfigurationTrait: TestTrait, SuiteTrait {
-  public var maxPollingIterations: Int
-  public var pollingInterval: Duration
+  public var maxPollingIterations: Int?
+  public var pollingInterval: Duration?
 
   public var isRecursive: Bool { true }
 
   public init(maxPollingIterations: Int?, pollingInterval: Duration?) {
-    self.maxPollingIterations = maxPollingIterations ?? defaultPollingConfiguration.maxPollingIterations
-    self.pollingInterval = pollingInterval ?? defaultPollingConfiguration.pollingInterval
+    self.maxPollingIterations = maxPollingIterations
+    self.pollingInterval = pollingInterval
   }
 }
 
 /// A trait to provide a default polling configuration to all usages of
-/// ``confirmPassesAlways`` within a test or suite.
+/// ``confirmAlwaysPasses`` within a test or suite.
 ///
-/// To add this trait to a test, use the ``Trait/pollingConfirmationAlways``
+/// To add this trait to a test, use the ``Trait/confirmAlwaysPassesDefaults``
+/// function.
 @_spi(Experimental)
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
-public struct ConfirmPassesAlwaysConfigurationTrait: TestTrait, SuiteTrait {
-  public var maxPollingIterations: Int
-  public var pollingInterval: Duration
+public struct ConfirmAlwaysPassesConfigurationTrait: TestTrait, SuiteTrait {
+  public var maxPollingIterations: Int?
+  public var pollingInterval: Duration?
 
   public var isRecursive: Bool { true }
 
   public init(maxPollingIterations: Int?, pollingInterval: Duration?) {
-    self.maxPollingIterations = maxPollingIterations ?? defaultPollingConfiguration.maxPollingIterations
-    self.pollingInterval = pollingInterval ?? defaultPollingConfiguration.pollingInterval
+    self.maxPollingIterations = maxPollingIterations
+    self.pollingInterval = pollingInterval
   }
 }
 
@@ -52,7 +54,8 @@ extension Trait where Self == ConfirmPassesEventuallyConfigurationTrait {
   ///     `maxPollingIterations` must be greater than 0.
   ///   - pollingInterval: The minimum amount of time to wait between polling
   ///     attempts.
-  ///     If nil, polling will wait at least 1 millisecond between polling attempts.
+  ///     If nil, polling will wait at least 1 millisecond between polling
+  ///     attempts.
   ///     `pollingInterval` must be greater than 0.
   public static func confirmPassesEventuallyDefaults(
     maxPollingIterations: Int? = nil,
@@ -67,7 +70,7 @@ extension Trait where Self == ConfirmPassesEventuallyConfigurationTrait {
 
 @_spi(Experimental)
 @available(macOS 13, iOS 17, watchOS 9, tvOS 17, visionOS 1, *)
-extension Trait where Self == ConfirmPassesAlwaysConfigurationTrait {
+extension Trait where Self == ConfirmAlwaysPassesConfigurationTrait {
   /// Specifies defaults for ``confirmPassesAlways`` in the test or suite.
   ///
   /// - Parameters:
@@ -76,13 +79,14 @@ extension Trait where Self == ConfirmPassesAlwaysConfigurationTrait {
   ///     `maxPollingIterations` must be greater than 0.
   ///   - pollingInterval: The minimum amount of time to wait between polling
   ///     attempts.
-  ///     If nil, polling will wait at least 1 millisecond between polling attempts.
+  ///     If nil, polling will wait at least 1 millisecond between polling
+  ///     attempts.
   ///     `pollingInterval` must be greater than 0.
-  public static func confirmPassesAlwaysDefaults(
+  public static func confirmAlwaysPassesDefaults(
     maxPollingIterations: Int? = nil,
     pollingInterval: Duration? = nil
   ) -> Self {
-    ConfirmPassesAlwaysConfigurationTrait(
+    ConfirmAlwaysPassesConfigurationTrait(
       maxPollingIterations: maxPollingIterations,
       pollingInterval: pollingInterval
     )

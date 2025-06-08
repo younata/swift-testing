@@ -179,7 +179,7 @@ struct PollingTests {
 
     @Suite(
       "Configuration traits",
-      .confirmPassesAlwaysDefaults(maxPollingIterations: 100)
+      .confirmAlwaysPassesDefaults(maxPollingIterations: 100)
     )
     struct WithConfigurationTraits {
       @Test("When no test or callsite configuration provided, uses the suite configuration")
@@ -194,7 +194,7 @@ struct PollingTests {
 
       @Test(
         "When test configuration porvided, uses the test configuration",
-        .confirmPassesAlwaysDefaults(maxPollingIterations: 10)
+        .confirmAlwaysPassesDefaults(maxPollingIterations: 10)
       )
       func testUsesTestConfigurationOverSuiteConfiguration() async {
         let incrementor = Incrementor()
@@ -206,7 +206,7 @@ struct PollingTests {
 
       @Test(
         "When callsite configuration provided, uses that",
-        .confirmPassesAlwaysDefaults(maxPollingIterations: 10)
+        .confirmAlwaysPassesDefaults(maxPollingIterations: 10)
       )
       func testUsesCallsiteConfiguration() async {
         let incrementor = Incrementor()
@@ -218,10 +218,11 @@ struct PollingTests {
     }
   }
 
-  @Suite("Duration Tests", .disabled("time-sensitive")) struct DurationTests {
+  @Suite("Duration Tests", .disabled("time-sensitive"))
+  struct DurationTests {
     @Suite("confirmPassesEventually")
     struct PassesOnceBehavior {
-      let delta = Duration.seconds(6)
+      let delta = Duration.milliseconds(100)
 
       @Test("Simple passing expressions") func trivialHappyPath() async {
         let duration = await Test.Clock().measure {
@@ -237,10 +238,11 @@ struct PollingTests {
           }
           #expect(issues.count == 1)
         }
-        #expect(duration.isCloseTo(other: .seconds(60), within: delta))
+        #expect(duration.isCloseTo(other: .seconds(2), within: delta))
       }
 
-      @Test("When the value changes from false to true during execution") func changingFromFail() async {
+      @Test("When the value changes from false to true during execution")
+      func changingFromFail() async {
         let incrementor = Incrementor()
 
         let duration = await Test.Clock().measure {
@@ -256,18 +258,36 @@ struct PollingTests {
         #expect(await incrementor.count == 2)
         #expect(duration.isCloseTo(other: .zero, within: delta))
       }
+
+      @Test("Doesn't wait after the last iteration")
+      func lastIteration() async {
+        let duration = await Test.Clock().measure {
+          let issues = await runTest {
+            await confirmPassesEventually(
+              maxPollingIterations: 10,
+              pollingInterval: .seconds(1) // Wait a long time to handle jitter.
+            ) { false }
+          }
+          #expect(issues.count == 1)
+        }
+        #expect(
+          duration.isCloseTo(
+            other: .seconds(9),
+            within: .milliseconds(500)
+          )
+        )
+      }
     }
 
     @Suite("confirmAlwaysPasses")
     struct PassesAlwaysBehavior {
-      // use a very generous delta for CI reasons.
-      let delta = Duration.seconds(6)
+      let delta = Duration.milliseconds(100)
 
       @Test("Simple passing expressions") func trivialHappyPath() async {
         let duration = await Test.Clock().measure {
           await confirmAlwaysPasses { true }
         }
-        #expect(duration.isCloseTo(other: .seconds(60), within: delta))
+        #expect(duration.isCloseTo(other: .seconds(1), within: delta))
       }
 
       @Test("Simple failing expressions") func trivialSadPath() async {
@@ -278,6 +298,22 @@ struct PollingTests {
           #expect(issues.count == 1)
         }
         #expect(duration.isCloseTo(other: .zero, within: delta))
+      }
+
+      @Test("Doesn't wait after the last iteration")
+      func lastIteration() async {
+        let duration = await Test.Clock().measure {
+          await confirmAlwaysPasses(
+            maxPollingIterations: 10,
+            pollingInterval: .seconds(1) // Wait a long time to handle jitter.
+          ) { true }
+        }
+        #expect(
+          duration.isCloseTo(
+            other: .seconds(9),
+            within: .milliseconds(500)
+          )
+        )
       }
     }
   }

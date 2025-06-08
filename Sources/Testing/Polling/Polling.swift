@@ -21,11 +21,13 @@ internal let defaultPollingConfiguration = (
 ///     function.
 ///   - maxPollingIterations: The maximum amount of times to attempt polling.
 ///     If nil, this uses whatever value is specified under the last
-///     ``ConfirmPassesEventuallyConfigurationTrait`` added to the test or suite.
+///     ``ConfirmPassesEventuallyConfigurationTrait`` added to the test or
+///     suite.
 ///     If no ``ConfirmPassesEventuallyConfigurationTrait`` has been added, then
 ///     polling will be attempted 1000 times before recording an issue.
 ///     `maxPollingIterations` must be greater than 0.
-///   - pollingInterval: The minimum amount of time to wait between polling attempts.
+///   - pollingInterval: The minimum amount of time to wait between polling
+///     attempts.
 ///     If nil, this uses whatever value is specified under the last
 ///     ``ConfirmPassesEventuallyConfigurationTrait`` added to the test or suite.
 ///     If no ``ConfirmPassesEventuallyConfigurationTrait`` has been added, then
@@ -86,11 +88,13 @@ public struct PollingFailedError: Error {}
 ///     function.
 ///   - maxPollingIterations: The maximum amount of times to attempt polling.
 ///     If nil, this uses whatever value is specified under the last
-///     ``ConfirmPassesEventuallyConfigurationTrait`` added to the test or suite.
+///     ``ConfirmPassesEventuallyConfigurationTrait`` added to the test or
+///     suite.
 ///     If no ``ConfirmPassesEventuallyConfigurationTrait`` has been added, then
 ///     polling will be attempted 1000 times before recording an issue.
 ///     `maxPollingIterations` must be greater than 0.
-///   - pollingInterval: The minimum amount of time to wait between polling attempts.
+///   - pollingInterval: The minimum amount of time to wait between polling
+///     attempts.
 ///     If nil, this uses whatever value is specified under the last
 ///     ``ConfirmPassesEventuallyConfigurationTrait`` added to the test or suite.
 ///     If no ``ConfirmPassesEventuallyConfigurationTrait`` has been added, then
@@ -158,14 +162,15 @@ public func confirmPassesEventually<R>(
 ///     function.
 ///   - maxPollingIterations: The maximum amount of times to attempt polling.
 ///     If nil, this uses whatever value is specified under the last
-///     ``ConfirmPassesAlwaysConfigurationTrait`` added to the test or suite.
-///     If no ``ConfirmPassesAlwaysConfigurationTrait`` has been added, then
+///     ``ConfirmAlwaysPassesConfigurationTrait`` added to the test or suite.
+///     If no ``ConfirmAlwaysPassesConfigurationTrait`` has been added, then
 ///     polling will be attempted 1000 times before recording an issue.
 ///     `maxPollingIterations` must be greater than 0.
-///   - pollingInterval: The minimum amount of time to wait between polling attempts.
+///   - pollingInterval: The minimum amount of time to wait between polling
+///     attempts.
 ///     If nil, this uses whatever value is specified under the last
-///     ``ConfirmPassesAlwaysConfigurationTrait`` added to the test or suite.
-///     If no ``ConfirmPassesAlwaysConfigurationTrait`` has been added, then
+///     ``ConfirmAlwaysPassesConfigurationTrait`` added to the test or suite.
+///     If no ``ConfirmAlwaysPassesConfigurationTrait`` has been added, then
 ///     polling will wait at least 1 millisecond between polling attempts.
 ///     `pollingInterval` must be greater than 0.
 ///   - isolation: The actor to which `body` is isolated, if any.
@@ -191,12 +196,12 @@ public func confirmAlwaysPasses(
     pollingIterations: getValueFromPollingTrait(
       providedValue: maxPollingIterations,
       default: defaultPollingConfiguration.maxPollingIterations,
-      \ConfirmPassesAlwaysConfigurationTrait.maxPollingIterations
+      \ConfirmAlwaysPassesConfigurationTrait.maxPollingIterations
     ),
     pollingInterval: getValueFromPollingTrait(
       providedValue: pollingInterval,
       default: defaultPollingConfiguration.pollingInterval,
-      \ConfirmPassesAlwaysConfigurationTrait.pollingInterval
+      \ConfirmAlwaysPassesConfigurationTrait.pollingInterval
     ),
     comment: comment,
     sourceLocation: sourceLocation
@@ -228,16 +233,13 @@ public func confirmAlwaysPasses(
 private func getValueFromPollingTrait<TraitKind, Value>(
   providedValue: Value?,
   default: Value,
-  _ keyPath: KeyPath<TraitKind, Value>
+  _ keyPath: KeyPath<TraitKind, Value?>
 ) -> Value {
   if let providedValue { return providedValue }
   guard let test = Test.current else { return `default` }
-  guard let trait = test.traits.compactMap({ $0 as? TraitKind }).last else {
-    print("No traits of type \(TraitKind.self) found. Returning default.")
-    print("Traits: \(test.traits)")
-    return `default`
-  }
-  return trait[keyPath: keyPath]
+  let possibleTraits = test.traits.compactMap { $0 as? TraitKind }
+  let traitValues = possibleTraits.compactMap { $0[keyPath: keyPath] }
+  return traitValues.last ?? `default`
 }
 
 /// A type to record the last value returned by a closure returning an optional
@@ -397,11 +399,15 @@ private struct Poller {
     isolation: isolated (any Actor)? = #isolation,
     expression: @escaping () async -> Bool
   ) async -> PollResult {
-    for _ in 0..<pollingIterations {
+    for iteration in 0..<pollingIterations {
       if let result = await pollingBehavior.processFinishedExpression(
         expressionResult: expression()
       ) {
         return result
+      }
+      if iteration == (pollingIterations - 1) {
+        // don't bother sleeping if it's the last iteration.
+        break
       }
       do {
         try await Task.sleep(for: pollingInterval)
