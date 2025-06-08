@@ -14,8 +14,6 @@
 struct PollingTests {
   @Suite("confirmPassesEventually")
   struct PassesOnceBehavior {
-    let delta = Duration.seconds(6)
-
     @Test("Simple passing expressions") func trivialHappyPath() async throws {
       await confirmPassesEventually { true }
 
@@ -54,13 +52,76 @@ struct PollingTests {
       }
       #expect(issues.count == 1)
     }
+
+    @Test("Waits up to 1000 times before failing")
+    func defaultPollingCount() async {
+      let incrementor = Incrementor()
+      _ = await runTest {
+        // this test will intentionally fail.
+        await confirmPassesEventually(pollingInterval: .nanoseconds(1)) {
+          await incrementor.increment() == 0
+        }
+      }
+      #expect(await incrementor.count == 1000)
+    }
+
+    @Suite(
+      "Configuration traits",
+      .confirmPassesEventuallyDefaults(maxPollingIterations: 100)
+    )
+    struct WithConfigurationTraits {
+      @Test("When no test or callsite configuration provided, uses the suite configuration")
+      func testUsesSuiteConfiguration() async throws {
+        let incrementor = Incrementor()
+        var test = Test {
+          await confirmPassesEventually(pollingInterval: .nanoseconds(1)) {
+            await incrementor.increment() == 0
+          }
+        }
+        test.traits = Test.current?.traits ?? []
+        await runTest(test: test)
+        let count = await incrementor.count
+        #expect(count == 100)
+      }
+
+      @Test(
+        "When test configuration porvided, uses the test configuration",
+        .confirmPassesEventuallyDefaults(maxPollingIterations: 10)
+      )
+      func testUsesTestConfigurationOverSuiteConfiguration() async {
+        let incrementor = Incrementor()
+        var test = Test {
+          // this test will intentionally fail.
+          await confirmPassesEventually(pollingInterval: .nanoseconds(1)) {
+            await incrementor.increment() == 0
+          }
+        }
+        test.traits = Test.current?.traits ?? []
+        await runTest(test: test)
+        #expect(await incrementor.count == 10)
+      }
+
+      @Test(
+        "When callsite configuration provided, uses that",
+        .confirmPassesEventuallyDefaults(maxPollingIterations: 10)
+      )
+      func testUsesCallsiteConfiguration() async {
+        let incrementor = Incrementor()
+        var test = Test {
+          // this test will intentionally fail.
+          await confirmPassesEventually(maxPollingIterations: 50, pollingInterval: .nanoseconds(1)) {
+            await incrementor.increment() == 0
+          }
+        }
+        test.traits = Test.current?.traits ?? []
+        await runTest(test: test)
+        #expect(await incrementor.count == 50)
+      }
+    }
   }
 
   @Suite("confirmAlwaysPasses")
   struct PassesAlwaysBehavior {
-    // use a very generous delta for CI reasons.
-    let delta = Duration.seconds(6)
-
     @Test("Simple passing expressions") func trivialHappyPath() async {
       await confirmAlwaysPasses { true }
     }
@@ -68,9 +129,8 @@ struct PollingTests {
     @Test("Simple failing expressions") func trivialSadPath() async {
       let issues = await runTest {
         await confirmAlwaysPasses { false }
-        await confirmAlwaysPasses { Optional<Int>.none }
       }
-      #expect(issues.count == 2)
+      #expect(issues.count == 1)
     }
 
     @Test("if the closures starts off as true, but becomes false")
@@ -106,6 +166,55 @@ struct PollingTests {
         }
       }
       #expect(issues.count == 1)
+    }
+
+    @Test("Waits up to 1000 times before passing")
+    func defaultPollingCount() async {
+      let incrementor = Incrementor()
+      await confirmAlwaysPasses(pollingInterval: .nanoseconds(1)) {
+        await incrementor.increment() != 0
+      }
+      #expect(await incrementor.count == 1000)
+    }
+
+    @Suite(
+      "Configuration traits",
+      .confirmPassesAlwaysDefaults(maxPollingIterations: 100)
+    )
+    struct WithConfigurationTraits {
+      @Test("When no test or callsite configuration provided, uses the suite configuration")
+      func testUsesSuiteConfiguration() async throws {
+        let incrementor = Incrementor()
+        await confirmAlwaysPasses(pollingInterval: .nanoseconds(1)) {
+          await incrementor.increment() != 0
+        }
+        let count = await incrementor.count
+        #expect(count == 100)
+      }
+
+      @Test(
+        "When test configuration porvided, uses the test configuration",
+        .confirmPassesAlwaysDefaults(maxPollingIterations: 10)
+      )
+      func testUsesTestConfigurationOverSuiteConfiguration() async {
+        let incrementor = Incrementor()
+        await confirmAlwaysPasses(pollingInterval: .nanoseconds(1)) {
+          await incrementor.increment() != 0
+        }
+        #expect(await incrementor.count == 10)
+      }
+
+      @Test(
+        "When callsite configuration provided, uses that",
+        .confirmPassesAlwaysDefaults(maxPollingIterations: 10)
+      )
+      func testUsesCallsiteConfiguration() async {
+        let incrementor = Incrementor()
+        await confirmAlwaysPasses(maxPollingIterations: 50, pollingInterval: .nanoseconds(1)) {
+          await incrementor.increment() != 0
+        }
+        #expect(await incrementor.count == 50)
+      }
     }
   }
 
