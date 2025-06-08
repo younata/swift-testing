@@ -16,8 +16,10 @@ struct PollingTests {
   struct PassesOnceBehavior {
     @Test("Simple passing expressions") func trivialHappyPath() async throws {
       await confirmPassesEventually { true }
+      try await requirePassesEventually { true }
 
       let value = try await confirmPassesEventually { 1 }
+
       #expect(value == 1)
     }
 
@@ -25,6 +27,9 @@ struct PollingTests {
       let issues = await runTest {
         await confirmPassesEventually { false }
         _ = try await confirmPassesEventually { Optional<Int>.none }
+        await #expect(throws: PollingFailedError()) {
+          try await requirePassesEventually { false }
+        }
       }
       #expect(issues.count == 3)
     }
@@ -122,13 +127,17 @@ struct PollingTests {
 
   @Suite("confirmAlwaysPasses")
   struct PassesAlwaysBehavior {
-    @Test("Simple passing expressions") func trivialHappyPath() async {
+    @Test("Simple passing expressions") func trivialHappyPath() async throws {
       await confirmAlwaysPasses { true }
+      try await requireAlwaysPasses { true }
     }
 
     @Test("Simple failing expressions") func trivialSadPath() async {
       let issues = await runTest {
         await confirmAlwaysPasses { false }
+        await #expect(throws: PollingFailedError()) {
+          try await requireAlwaysPasses { false }
+        }
       }
       #expect(issues.count == 1)
     }
