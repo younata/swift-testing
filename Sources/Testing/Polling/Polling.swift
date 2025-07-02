@@ -71,7 +71,7 @@ public func confirmPassesEventually(
     comment: comment,
     sourceLocation: sourceLocation
   )
-  await poller.evaluate(isolation: isolation) {
+  await poller.evaluateBool(isolation: isolation) {
     do {
       return try await body()
     } catch {
@@ -136,7 +136,7 @@ public func requirePassesEventually(
     comment: comment,
     sourceLocation: sourceLocation
   )
-  let passed = await poller.evaluate(raiseIssue: false, isolation: isolation) {
+  let passed = await poller.evaluateBool(raiseIssue: false, isolation: isolation) {
     do {
       return try await body()
     } catch {
@@ -272,7 +272,7 @@ public func confirmAlwaysPasses(
     comment: comment,
     sourceLocation: sourceLocation
   )
-  await poller.evaluate(isolation: isolation) {
+  await poller.evaluateBool(isolation: isolation) {
     do {
       return try await body()
     } catch {
@@ -335,7 +335,7 @@ public func requireAlwaysPasses(
     comment: comment,
     sourceLocation: sourceLocation
   )
-  let passed = await poller.evaluate(raiseIssue: false, isolation: isolation) {
+  let passed = await poller.evaluateBool(raiseIssue: false, isolation: isolation) {
     do {
       return try await body()
     } catch {
@@ -490,61 +490,19 @@ private struct Poller {
   ///
   /// - Side effects: If polling fails (see `PollingBehavior`), then this will
   ///   record an issue.
-  @discardableResult func evaluate(
+  @discardableResult func evaluateBool(
     raiseIssue: Bool = true,
     isolation: isolated (any Actor)?,
     _ body: @escaping () async -> Bool
   ) async -> Bool {
-    precondition(pollingIterations > 0)
-    precondition(pollingInterval > Duration.zero)
-    let result = await poll(
-      expression: body
-    )
-    if let issue = result.issue(
-      comment: comment,
-      sourceContext: .init(backtrace: .current(), sourceLocation: sourceLocation),
-      pollingBehavior: pollingBehavior
-    ) {
-      if raiseIssue {
-        issue.record()
+    await evaluate(raiseIssue: raiseIssue, isolation: isolation) {
+      if await body() {
+        // return any non-nil value.
+        return true
+      } else {
+        return nil
       }
-      return false
-    } else {
-      return true
-    }
-  }
-
-  /// This function contains the logic for continuously polling an expression,
-  /// as well as processing the results of that expression
-  ///
-  /// - Parameters:
-  ///   - expression: An expression to continuously evaluate
-  ///   - behavior: The polling behavior to use
-  ///   - timeout: How long to poll for unitl the timeout triggers.
-  /// - Returns: The result of this polling.
-  private func poll(
-    isolation: isolated (any Actor)? = #isolation,
-    expression: @escaping () async -> Bool
-  ) async -> PollResult {
-    for iteration in 0..<pollingIterations {
-      if let result = await pollingBehavior.processFinishedExpression(
-        expressionResult: expression()
-      ) {
-        return result
-      }
-      if iteration == (pollingIterations - 1) {
-        // don't bother sleeping if it's the last iteration.
-        break
-      }
-      do {
-        try await Task.sleep(for: pollingInterval)
-      } catch {
-        // `Task.sleep` should only throw an error if it's cancelled
-        // during the sleep period.
-        return .cancelled
-      }
-    }
-    return .ranToCompletion
+    } != nil
   }
 
   /// Evaluate polling, and process the result, raising an issue if necessary.
@@ -603,8 +561,9 @@ private struct Poller {
     isolation: isolated (any Actor)? = #isolation,
     expression: @escaping () async -> sending R?
   ) async -> (PollResult, R?) {
+    var lastResult: R?
     for iteration in 0..<pollingIterations {
-      let lastResult = await expression()
+      lastResult = await expression()
       if let result = pollingBehavior.processFinishedExpression(
         expressionResult: lastResult != nil
       ) {
@@ -622,6 +581,6 @@ private struct Poller {
         return (.cancelled, nil)
       }
     }
-    return (.ranToCompletion, nil)
+    return (.ranToCompletion, lastResult)
   }
 }
