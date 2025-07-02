@@ -190,9 +190,8 @@ public func confirmPassesEventually<R>(
   pollingInterval: Duration? = nil,
   isolation: isolated (any Actor)? = #isolation,
   sourceLocation: SourceLocation = #_sourceLocation,
-  _ body: @escaping () async throws -> R?
-) async throws -> R where R: Sendable {
-  let recorder = PollingRecorder<R>()
+  _ body: @escaping () async throws -> sending R?
+) async throws -> R {
   let poller = Poller(
     pollingBehavior: .passesOnce,
     pollingIterations: getValueFromPollingTrait(
@@ -208,15 +207,15 @@ public func confirmPassesEventually<R>(
     comment: comment,
     sourceLocation: sourceLocation
   )
-  await poller.evaluate(isolation: isolation) {
+  let recordedValue = await poller.evaluate(isolation: isolation) {
     do {
-      return try await recorder.record(value: body())
+      return try await body()
     } catch {
-      return false
+      return nil
     }
   }
 
-  if let value = await recorder.lastValue {
+  if let value = recordedValue {
     return value
   }
   throw PollingFailedError()
@@ -373,26 +372,6 @@ private func getValueFromPollingTrait<TraitKind, Value>(
   let possibleTraits = test.traits.compactMap { $0 as? TraitKind }
   let traitValues = possibleTraits.compactMap { $0[keyPath: keyPath] }
   return traitValues.last ?? `default`
-}
-
-/// A type to record the last value returned by a closure returning an optional
-/// This is only used in the `confirm` polling functions evaluating an optional.
-private actor PollingRecorder<R: Sendable> {
-  var lastValue: R?
-
-  /// Record a new value to be returned
-  func record(value: R) {
-    self.lastValue = value
-  }
-
-  func record(value: R?) -> Bool {
-    if let value {
-      self.lastValue = value
-      return true
-    } else {
-      return false
-    }
-  }
 }
 
 /// A type for managing polling
@@ -566,5 +545,83 @@ private struct Poller {
       }
     }
     return .ranToCompletion
+  }
+
+  /// Evaluate polling, and process the result, raising an issue if necessary.
+  ///
+  /// - Note: This method is only intended to be used when pollingBehavior is
+  ///   `.passesOnce`
+  ///
+  /// - Parameters:
+  ///   - raiseIssue: Whether or not to raise an issue.
+  ///     This should only be false for `requirePassesEventually` or
+  ///     `requireAlwaysPasses`.
+  ///   - isolation: The isolation to use
+  ///   - body: The expression to poll
+  ///
+  /// - Returns: the value if polling passed, nil otherwise.
+  ///
+  /// - Side effects: If polling fails (see `PollingBehavior`), then this will
+  ///   record an issue.
+  @discardableResult func evaluate<R>(
+    raiseIssue: Bool = true,
+    isolation: isolated (any Actor)?,
+    _ body: @escaping () async -> sending R?
+  ) async -> R? {
+    precondition(pollingIterations > 0)
+    precondition(pollingInterval > Duration.zero)
+    let (result, value) = await poll(
+      expression: body
+    )
+    if let issue = result.issue(
+      comment: comment,
+      sourceContext: .init(backtrace: .current(), sourceLocation: sourceLocation),
+      pollingBehavior: pollingBehavior
+    ) {
+      if raiseIssue {
+        issue.record()
+      }
+      return value
+    } else {
+      return value
+    }
+  }
+
+  /// This function contains the logic for continuously polling an expression,
+  /// as well as processing the results of that expression
+  ///
+  /// - Note: This method is only intended to be used when pollingBehavior is
+  ///   `.passesOnce`
+  ///
+  /// - Parameters:
+  ///   - expression: An expression to continuously evaluate
+  ///   - behavior: The polling behavior to use
+  ///   - timeout: How long to poll for unitl the timeout triggers.
+  /// - Returns: The result of this polling and the most recent value if the
+  ///   result is .finished, otherwise nil.
+  private func poll<R>(
+    isolation: isolated (any Actor)? = #isolation,
+    expression: @escaping () async -> sending R?
+  ) async -> (PollResult, R?) {
+    for iteration in 0..<pollingIterations {
+      let lastResult = await expression()
+      if let result = pollingBehavior.processFinishedExpression(
+        expressionResult: lastResult != nil
+      ) {
+        return (result, lastResult)
+      }
+      if iteration == (pollingIterations - 1) {
+        // don't bother sleeping if it's the last iteration.
+        break
+      }
+      do {
+        try await Task.sleep(for: pollingInterval)
+      } catch {
+        // `Task.sleep` should only throw an error if it's cancelled
+        // during the sleep period.
+        return (.cancelled, nil)
+      }
+    }
+    return (.ranToCompletion, nil)
   }
 }
